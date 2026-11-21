@@ -66,6 +66,84 @@ VARIANTS = {
     "c_edge_farm_kite": ({"drift_frac": 0.95, "npc_farm": True, "kite_dist": 80.0}, "edge + NPC farming + kite 80"),
 }
 
+# ---- tougher opponent: loots and farms early, upgrades damage, picks off weakened mechs,
+# keeps laser range, takes cover only when low. Used with perks to stand in for built-ins.
+VARIANTS["elite"] = ({"engage_range": 180.0, "weak_engage": 200.0, "cover_hp": 0.35, "cover_range": 1e9,
+                      "target_mode": "weak", "kite_dist": 60.0, "npc_farm": True, "early_greedy": True,
+                      "upgrades": "damage", "seek_gunfire": True, "strafe_w": 1.2, "loot_enemy_r": 0.0,
+                      "combat_range": 200.0, "drop_crowd_r": 15.0}, "strong opponent")
+
+# ---- round 4: variants of t300 (real 3.83 ~ t200 3.92)
+T300 = {"drift_frac": 0.95, "npc_farm": True, "upgrades": "damage"}
+
+
+def _t3(extra, why):
+    p = dict(T300)
+    p.update(extra)
+    return p, why
+
+
+VARIANTS.update({
+    "t300": _t3({}, "t300 itself (control)"),
+    # ablations: which part of t300 matters
+    "a_no_edge": _t3({"drift_frac": 0.6}, "t300 without edge holding"),
+    "a_no_farm": _t3({"npc_farm": False}, "t300 without NPC farming"),
+    "a_surv_upg": _t3({"upgrades": "survival"}, "t300 with survival upgrades"),
+    # minor tweaks
+    "w_kite80": _t3({"kite_dist": 80.0}, "+ keep 80-115 m in fights"),
+    "w_kite60": _t3({"kite_dist": 60.0}, "+ keep 60-95 m in fights"),
+    "w_engage120": _t3({"engage_range": 120.0}, "+ shoot out to 120 m"),
+    "w_engage70": _t3({"engage_range": 70.0}, "+ shoot only within 70 m"),
+    "w_cover_early": _t3({"cover_hp": 0.75}, "+ seek cover below 75% HP"),
+    "w_cover_late": _t3({"cover_hp": 0.45}, "+ seek cover only below 45% HP"),
+    "w_margin_big": _t3({"margin_frac": 0.35, "margin_cap": 40.0}, "+ deeper inside next circle"),
+    "w_target_weak": _t3({"target_mode": "weak"}, "+ focus lowest HP"),
+    "w_lightning": _t3({"pref_lightning": 4}, "+ prefer lightning"),
+    "w_strafe_hard": _t3({"strafe_w": 1.4}, "+ strafe harder"),
+    "w_aim_loose": _t3({"aim_tol": 2.5}, "+ looser trigger"),
+    "w_no_drops": _t3({"drops": False}, "+ ignore supply drops"),
+    "w_drop_contest": _t3({"drop_crowd_r": 12.0, "drop_range": 250.0}, "+ contest supply drops"),
+    "w_greedy_early": _t3({"early_greedy": True}, "+ loot range x1.8 for 100 s"),
+    "w_npc_ignore": _t3({"npc_avoid": 0.0}, "+ no drone avoidance"),
+    "w_retreat_late": _t3({"retreat_hp": 0.25}, "+ only back off below 25% HP"),
+    # new behaviours
+    "w_heal60": _t3({"heal_retreat": 0.6}, "+ fall back across the safe disc below 60% HP after being shot"),
+    "w_heal40": _t3({"heal_retreat": 0.4}, "+ fall back below 40% HP"),
+    "w_avoid_fire": _t3({"avoid_gunfire": True}, "+ move away from heard gunfire"),
+    "w_third": _t3({"seek_gunfire": True, "target_mode": "weak"}, "+ third-party heard fights"),
+    # bigger combinations
+    "m_fighter": _t3({"kite_dist": 70.0, "engage_range": 120.0, "target_mode": "weak", "strafe_w": 1.2},
+                     "t300 as a disciplined fighter"),
+    "m_survivor": _t3({"heal_retreat": 0.6, "cover_hp": 0.75, "avoid_gunfire": True, "margin_frac": 0.35,
+                       "margin_cap": 40.0}, "t300 as a careful survivor"),
+    "m_grower": _t3({"early_greedy": True, "drop_crowd_r": 12.0, "drop_range": 250.0, "kite_dist": 80.0},
+                    "t300 that grows faster (loot, drops) then kites"),
+})
+
+
+# ---- round 5: stack the round-4 winners on t300, one at a time
+VARIANTS.update({
+    "k1_greedy_kite": _t3({"early_greedy": True, "kite_dist": 80.0}, "t300 + early greed + kite 80"),
+    "k2_plus_surv": _t3({"early_greedy": True, "kite_dist": 80.0, "upgrades": "survival"}, "k1 + survival upgrades"),
+    "k3_plus_late": _t3({"early_greedy": True, "kite_dist": 80.0, "upgrades": "survival", "retreat_hp": 0.25},
+                        "k2 + back off only below 25%"),
+    "k4_all": _t3({"early_greedy": True, "kite_dist": 80.0, "upgrades": "survival", "retreat_hp": 0.25,
+                   "npc_avoid": 0.0, "drop_crowd_r": 12.0, "drop_range": 250.0}, "every round-4 winner"),
+})
+
+
+# ---- round 6: combat abilities on top of t300
+VARIANTS.update({
+    "x_aim": _t3({"smart_aim": True}, "t300 + acceleration lead and visible-part aiming"),
+    "x_evade05": _t3({"evasive": 0.5}, "t300 + light random strafing when aimed at"),
+    "x_evade10": _t3({"evasive": 1.0}, "t300 + strong random strafing when aimed at"),
+    "x_arm": _t3({"arm_first": True}, "t300 + get a second weapon before fighting (first 75 s)"),
+    "x_precharge": _t3({"laser_precharge": True}, "t300 + pre-charge the laser when mechs are in range"),
+    "x_aim_evade": _t3({"smart_aim": True, "evasive": 0.8}, "t300 + smart aim + evasion"),
+    "x_all": _t3({"smart_aim": True, "evasive": 0.8, "arm_first": True, "laser_precharge": True},
+                 "t300 + all four combat abilities"),
+})
+
 
 def write_all(out_dir=None):
     out_dir = out_dir or os.path.join(os.path.dirname(os.path.abspath(__file__)), "bots")

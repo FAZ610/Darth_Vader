@@ -357,6 +357,9 @@ DEFAULTS = dict(
     lightning_reserve=25.0, detour_slack=25.0, urgent_slack=8.0,
     # structural options (off = t200 behaviour)
     early_greedy=False, target_mode="near", drop_crowd_r=35.0, seek_gunfire=False, kite_dist=0.0,
+    heal_retreat=0.0,
+    # combat abilities (round 6)
+    smart_aim=False, evasive=0.0, arm_first=False, laser_precharge=False,
 )
 PARAMS = {}
 
@@ -388,6 +391,14 @@ class Bot:
         self.zone_start = None  # (phase key, center, radius)
         self.last_move = (0.0, 0.0)
         self.blocked_items = {}  # item id -> time we gave up
+        self.vel_hist = {}  # mech id -> (t, vel) for acceleration estimates
+        self.acc = {}  # mech id -> (ax, ay)
+        self.aim_frac = {}  # target id -> body height fraction to aim at
+        import random as _random
+        self.rng = _random.Random(hello.get("seed", 0))
+        self.evade_sign = 1
+        self.evade_flip = 0.0
+        self.evade_jump = False
 
     # ---------------------------------------------------------------- zone model
     def zone_circle_fn(self, zone, t):
@@ -495,12 +506,20 @@ class Bot:
         vx, vy, vz = tgt.get("vel", [0, 0, 0])
         scale = 1 + self.cfg["cubes"]["size_per_cube"] * tgt.get("cubes", 0)
         com = (self.cfg["mech"]["height"] / 2) * scale if tgt["kind"] == "mech" else self.cfg["npc"]["height"] / 2
+        ax = ay = 0.0
+        if self.P["smart_aim"]:
+            frac = self.aim_frac.get(tgt["id"])
+            if frac is not None and tgt["kind"] == "mech":
+                com = self.cfg["mech"]["height"] * scale * frac
+            ax, ay = self.acc.get(tgt["id"], (0.0, 0.0))
         px, py, pz = tx, ty, tz + com
         if speed:
             for _ in range(3):
                 d = math.dist((px, py, pz), (mx, my, mz + me["stats"]["muzzle_height"]))
                 tt = d / speed
-                px, py = tx + vx * tt, ty + vy * tt
+                ta = min(tt, 0.8)
+                px = tx + vx * tt + 0.5 * ax * ta * ta
+                py = ty + vy * tt + 0.5 * ay * ta * ta
                 pz = tz + com + (vz * tt if abs(vz) > 0.5 else 0)
         return px, py, pz
 
@@ -571,6 +590,22 @@ class Bot:
         eye = (mx, my, mz + me["stats"]["eye_height"])
         muzzle = (mx, my, mz + me["stats"]["muzzle_height"])
 
+        if P["smart_aim"]:
+            for m in mechs:
+                v = m.get("vel", [0, 0, 0])
+                prev = self.vel_hist.get(m["id"])
+                if prev is not None and 0.05 < t - prev[0] < 0.5:
+                    dt_ = t - prev[0]
+                    nax = max(-40.0, min(40.0, (v[0] - prev[1][0]) / dt_))
+                    nay = max(-40.0, min(40.0, (v[1] - prev[1][1]) / dt_))
+                    oax, oay = self.acc.get(m["id"], (0.0, 0.0))
+                    self.acc[m["id"]] = (0.5 * oax + 0.5 * nax, 0.5 * oay + 0.5 * nay)
+                else:
+                    self.acc[m["id"]] = (0.0, 0.0)
+                self.vel_hist[m["id"]] = (t, list(v))
+        armed = not any(w is None for w in me["weapons"])
+        arm_mode = P["arm_first"] and t < 75 and not armed
+
         def recently(i, s=4.0):
             return t - self.attacked_by.get(i, -99) < s
 
@@ -580,6 +615,8 @@ class Bot:
             d = hdist(m["pos"], me["pos"])
             hostile = recently(m["id"])
             weak = m.get("hp", 1e9) < P["weak_frac"] * m.get("max_hp", 1)
+            if arm_mode and not (hostile or d < 25):
+                continue
             if not (hostile or d < P["engage_range"] or (weak and d < P["weak_engage"])):
                 continue
             s = d - (80 if hostile else 0) - (40 if weak else 0)
@@ -599,6 +636,15 @@ class Bot:
             tgt_d = hdist(target["pos"], me["pos"])
             tz = target["pos"][2] + 4.0
             tgt_los = W.los(muzzle, (target["pos"][0], target["pos"][1], tz))
+            if P["smart_aim"] and target["kind"] == "mech":
+                self.aim_frac[target["id"]] = 0.5
+                if not tgt_los:
+                    hgt = self.cfg["mech"]["height"] * (1 + self.cfg["cubes"]["size_per_cube"] * target.get("cubes", 0))
+                    for frac in (0.85, 0.2):
+                        if W.los(muzzle, (target["pos"][0], target["pos"][1], target["pos"][2] + hgt * frac)):
+                            self.aim_frac[target["id"]] = frac
+                            tgt_los = True
+                            break
 
         # crate as a fallback target (only when calm)
         crate = None
@@ -626,7 +672,14 @@ class Bot:
             gave_up = self.blocked_items.get(item["id"])
             return gave_up is None or t - gave_up > 8
 
-        if not urgent:
+        if (P["heal_retreat"] > 0 and not urgent and hp_frac < P["heal_retreat"] and target is None
+                and self.threat and t - self.threat[1] < 12.0 and zp["nr"] > 0):
+            # hurt and recently shot at: fall back to the far side of the safe disc to regenerate
+            bx, by = math.cos(self.threat[0]), math.sin(self.threat[0])
+            gx, gy = zp["nx"] - bx * zp["safe_r"] * 0.7, zp["ny"] - by * zp["safe_r"] * 0.7
+            if math.hypot(gx - mx, gy - my) > 8:
+                goal, reason = (gx, gy), "heal"
+        if not urgent and goal is None:
             # supply drop: full HP + cubes
             for dr in obs.get("drops", []):
                 p = dr["pos"]
@@ -643,7 +696,7 @@ class Bot:
                         break
             # cubes
             greed = 1.8 if (P["early_greedy"] and t < 100) else 1.0
-            if goal is None and me["cubes"] < 40:
+            if goal is None and me["cubes"] < 40 and not arm_mode:
                 best = 1e9
                 for c in obs.get("cubes", []):
                     d = hdist(c["pos"], me["pos"])
@@ -662,7 +715,7 @@ class Bot:
                         continue
                     d = hdist(pk["pos"], me["pos"])
                     s = self.wpref.get(pk["kind"], 0) * 15 - d
-                    if (d < P["weapon_range"] * greed and abs(pk["pos"][2] - mz) < 4 and usable(pk)
+                    if (d < P["weapon_range"] * (2.0 if arm_mode else greed) and abs(pk["pos"][2] - mz) < 4 and usable(pk)
                             and self.loot_ok(zp, pk["pos"], t) and s > best and reachable(pk["pos"])):
                         goal, best, reason = (pk["pos"][0], pk["pos"][1]), s, "weapon"
             # walk toward a crate we're shooting
@@ -871,6 +924,27 @@ class Bot:
             mvx, mvy = ix + dodge_x * 0.3, iy + dodge_y * 0.3
             speed_frac = 1.0
 
+        self.evade_jump = False
+        if P["evasive"] > 0 and not zp["outside"]:
+            aimer = None
+            for m in mechs:
+                d = hdist(m["pos"], me["pos"])
+                if d > 160:
+                    continue
+                to_me = math.atan2(my - m["pos"][1], mx - m["pos"][0])
+                if abs(wrap(m["aim"][0] - to_me)) < 0.2 and (aimer is None or d < aimer[0]):
+                    aimer = (d, m)
+            if aimer is not None:
+                if t > self.evade_flip:
+                    self.evade_sign = self.rng.choice((-1, 1))
+                    self.evade_flip = t + self.rng.uniform(0.5, 1.1)
+                fx, fy = norm(aimer[1]["pos"][0] - mx, aimer[1]["pos"][1] - my)
+                ex, ey = -fy * self.evade_sign, fx * self.evade_sign
+                mvx += ex * P["evasive"]
+                mvy += ey * P["evasive"]
+                speed_frac = 1.0
+                if energy > 50 and self.rng.random() < 0.06:
+                    self.evade_jump = True
         # local wall avoidance
         hx, hy = norm(mvx, mvy)
         if hx or hy:
@@ -914,6 +988,8 @@ class Bot:
             speed_frac = 1.0
         if not (hx or hy):
             speed_frac = 0.0
+        if self.evade_jump and me["grounded"]:
+            jump = True
         if (P["jump_evade"] and me["grounded"] and energy > 40 and int(t * 10) % 12 == 0
                 and any(recently(m["id"], 2.0) for m in mechs)):
             jump = True
@@ -1000,6 +1076,11 @@ class Bot:
                     fire[i] = abs(wrap(me["aim"][0] - aim[0])) < 0.2
         if aim is None:
             aim = self.scan_aim(t, me, mechs, zp, hx, hy)
+        if P["laser_precharge"] and target is None and "laser" in kinds and not urgent:
+            i, w = kinds["laser"]
+            rng_ = w["stats"]["range"] * 0.8
+            if w.get("cooldown", 0) == 0 and any(hdist(m["pos"], me["pos"]) < rng_ for m in mechs):
+                fire[i] = True
 
         # gun housekeeping: reload when empty or when calm and low
         if "gun" in kinds:

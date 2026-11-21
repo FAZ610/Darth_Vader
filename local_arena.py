@@ -404,8 +404,8 @@ class Mech:
         self.stats = st
         self.wstats = ws
         cap = cfg["cubes"]["stat_cap"]
-        self.dmg_mult = 1 + cfg["cubes"]["damage_per_cube"] * min(self.cubes, cap)
-        new_max = st["hp"] * (1 + cfg["cubes"]["hp_per_cube"] * min(self.cubes, cap))
+        self.dmg_mult = (1 + cfg["cubes"]["damage_per_cube"] * min(self.cubes, cap)) * getattr(self, "perk_dmg", 1.0)
+        new_max = st["hp"] * (1 + cfg["cubes"]["hp_per_cube"] * min(self.cubes, cap)) * getattr(self, "perk_hp", 1.0)
         if hasattr(self, "max_hp"):
             if new_max > self.max_hp:
                 self.hp += new_max - self.max_hp
@@ -484,8 +484,20 @@ class Match:
         self.procs = []
         self.inbox = queue.Queue()
         for sl in range(len(lineup)):
-            label, path = lineup[slots[sl]]
+            entry = lineup[slots[sl]]
+            label, path = entry[0], entry[1]
+            perks = entry[2] if len(entry) > 2 else {}
             m = Mech(sl, label, spawns[sl], cfg)
+            # Perks make pool opponents stronger than the rules alone allow (to stand in for
+            # built-in bots that beat ours): hp / dmg multipliers, gun spread multiplier, start cubes.
+            m.perk_hp = float(perks.get("hp", 1.0))
+            m.perk_dmg = float(perks.get("dmg", 1.0))
+            m.perk_spread = float(perks.get("spread", 1.0))
+            # hunt: this opponent cannot see other hunters, so it only engages the bots under test
+            m.perk_hunt = bool(perks.get("hunt", 0))
+            m.recompute()
+            m.hp = m.max_hp
+            m.start_cubes = int(perks.get("cubes", 0))
             m.aim = [rng.uniform(-math.pi, math.pi), 0.0]
             m.cmd["aim"] = list(m.aim)
             self.mechs.append(m)
@@ -586,6 +598,10 @@ class Match:
     # ---------------------------------------------------------------- run
     def run(self):
         cfg = self.cfg
+        for m in self.mechs:
+            if m.start_cubes:
+                self.give_cube(m, m.start_cubes)
+                m.hp = m.max_hp
         hello_budget = cfg["bot"]["hello_budget_ms"] / 1000.0
         for m, p in zip(self.mechs, self.procs):
             p.send({"type": "hello", "protocol": "mechfight/1", "slot": m.id,
@@ -1172,7 +1188,7 @@ class Match:
                     if w.cooldown < 0:
                         w.cooldown = ws["cooldown"]
                     w.ammo -= 1
-                    sp = math.radians(ws["spread_deg"])
+                    sp = math.radians(ws["spread_deg"]) * m.perk_spread
                     yaw = m.aim[0] + self.rng.gauss(0, sp)
                     pit = m.aim[1] + self.rng.gauss(0, sp)
                     d = self.aim_dir(yaw, pit)
@@ -1671,6 +1687,8 @@ class Match:
             mechs_o = []
             for kind, e in others:
                 if e is m:
+                    continue
+                if m.perk_hunt and kind == "mech" and e.perk_hunt:
                     continue
                 if t - m.seen.get(e.id, -99) <= mem:
                     if kind == "mech":

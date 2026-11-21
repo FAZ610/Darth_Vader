@@ -28,10 +28,16 @@ def resolve(name):
 
 
 def parse_counts(specs):
+    """'name:count@key=val,key=val' -> [(name, perks), ...]"""
     out = []
     for s in specs:
+        s, _, perk_s = s.partition("@")
         name, _, n = s.partition(":")
-        out += [name] * int(n or 1)
+        perks = {}
+        for kv in filter(None, perk_s.split(",")):
+            k, _, v = kv.partition("=")
+            perks[k] = float(v)
+        out += [(name, perks)] * int(n or 1)
     return out
 
 
@@ -65,7 +71,7 @@ def main():
     groups = schedule(a.candidates, a.per_match, a.rounds)
     jobs = []
     for i, g in enumerate(groups):
-        lineup = [("CONTROL", resolve(a.control))] + [(c, resolve(c)) for c in g] + [("pool:" + p, resolve(p)) for p in pool]
+        lineup = [("CONTROL", resolve(a.control))] + [(c, resolve(c)) for c in g] + [("pool:" + p, resolve(p), perks) for p, perks in pool]
         assert len(lineup) <= 16, len(lineup)
         jobs.append((lineup, a.seed + i))
     print("%s: %d matches, %d candidates x %d each, control=%s, pool=%s" % (
