@@ -150,31 +150,16 @@ class Bot:
             if outside_distance > -8:
                 move_x, move_y = zdx, zdy
 
-        nearby_cubes = sorted(
-            obs["cubes"],
-            key=lambda cube: dist2(cube["pos"], me["pos"]),
-        )
-        if nearby_cubes and dist2(
-            nearby_cubes[0]["pos"], me["pos"]
-        ) < 25:
-            cx, cy = nearby_cubes[0]["pos"][:2]
-            cube_dx, cube_dy = cx - mx, cy - my
-
-            if target:
-                tx, ty, _ = target["pos"]
-                enemy_dx, enemy_dy = tx - mx, ty - my
-                enemy_distance = math.hypot(enemy_dx, enemy_dy)
-                if enemy_distance < 18:
-                    # Keep away from an immediate threat; do not move toward loot.
-                    move_x, move_y = cube_dx * 0.25 - enemy_dx * 0.75, \
-                                     cube_dy * 0.25 - enemy_dy * 0.75
-                elif outside_distance > -4:
-                    # Zone safety overrides both pursuit and cube collection.
-                    move_x, move_y = zdx, zdy
-                else:
-                    move_x, move_y = cube_dx, cube_dy
-            else:
-                move_x, move_y = cube_dx, cube_dy
+        if not target or len(enemies) == 0:
+            nearby_cubes = sorted(
+                obs["cubes"],
+                key=lambda cube: dist2(cube["pos"], me["pos"]),
+            )
+            if nearby_cubes and dist2(
+                nearby_cubes[0]["pos"], me["pos"]
+            ) < 25:
+                cx, cy = nearby_cubes[0]["pos"][:2]
+                move_x, move_y = cx - mx, cy - my
 
         if outside_distance > -4:
             move_x, move_y = zdx, zdy
