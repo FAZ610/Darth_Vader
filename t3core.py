@@ -300,6 +300,33 @@ class World:
             if count % 256 == 0 and time.perf_counter() > end:
                 return
 
+    def find_roofs(self, min_h, max_h):
+        """Flat roof spots (x, y, top) on a 4 m lattice: roof is min_h..max_h above the ground and
+        level within 0.6 m for 6 m around (so we can stand well inside the edge)."""
+        if not self.ok:
+            return []
+        out = []
+        nx, top = self.nx, self.top
+        F = self.FINE
+        for j in range(3, self.ny - 3, 2):
+            row = j * nx
+            for i in range(3, nx - 3, 2):
+                t0 = top[row + i]
+                if t0 < -1e8:
+                    continue
+                x, y = self.x0 + i * F, self.y0 + j * F
+                h = t0 - self.ground(x, y)
+                if h < min_h or h > max_h:
+                    continue
+                flat = True
+                for di, dj in ((3, 0), (-3, 0), (0, 3), (0, -3), (2, 2), (-2, 2), (2, -2), (-2, -2)):
+                    if abs(top[(j + dj) * nx + i + di] - t0) > 0.6:
+                        flat = False
+                        break
+                if flat:
+                    out.append((x, y, t0))
+        return out
+
     def flow_heading(self, x, y, z):
         """Heading toward a reachable lower-distance cell nearby, or None."""
         if not self.ok or self.flow_dist is None:
@@ -360,6 +387,8 @@ DEFAULTS = dict(
     heal_retreat=0.0,
     # combat abilities (round 6)
     smart_aim=False, evasive=0.0, arm_first=False, laser_precharge=False,
+    # rooftop design (round 8)
+    roof_mode=False, roof_min_h=8.0, roof_max_h=40.0, roof_after=0.0, roof_min_r=30.0, roof_engage=True,
 )
 PARAMS = {}
 
@@ -399,6 +428,12 @@ class Bot:
         self.evade_sign = 1
         self.evade_flip = 0.0
         self.evade_jump = False
+        self.roofs = None  # lazily computed list of (x, y, top)
+        self.roof = None  # chosen roof spot
+        self.climbing = False
+        self.on_roof = False
+        if self.P["roof_mode"]:
+            self.roofs = self.world.find_roofs(self.P["roof_min_h"], self.P["roof_max_h"])
 
     # ---------------------------------------------------------------- zone model
     def zone_circle_fn(self, zone, t):
@@ -615,6 +650,8 @@ class Bot:
             d = hdist(m["pos"], me["pos"])
             hostile = recently(m["id"])
             weak = m.get("hp", 1e9) < P["weak_frac"] * m.get("max_hp", 1)
+            if self.on_roof and not P["roof_engage"] and not hostile:
+                continue
             if arm_mode and not (hostile or d < 25):
                 continue
             if not (hostile or d < P["engage_range"] or (weak and d < P["weak_engage"])):
@@ -731,6 +768,42 @@ class Bot:
                 df = 0.15 if (P["late_center"] and zp["nr"] <= 140) else P["drift_frac"]
                 if d_c > df * max(zp["safe_r"], 1) and d_c > 6:
                     goal, reason = (zp["nx"], zp["ny"]), "drift"
+
+        self.on_roof = False
+        climb_now = False
+        if P["roof_mode"] and W.ok and not zp["outside"] and zp["nr"] >= P["roof_min_r"] and not urgent:
+            if self.roofs is None:
+                self.roofs = W.find_roofs(P["roof_min_h"], P["roof_max_h"])
+            lim = zp["safe_r"] - 6
+            r = self.roof
+            if r is None or math.hypot(r[0] - zp["nx"], r[1] - zp["ny"]) > lim:
+                best, bs = None, 1e18
+                for rx, ry, rt in self.roofs:
+                    if math.hypot(rx - zp["nx"], ry - zp["ny"]) > lim:
+                        continue
+                    sc = math.hypot(rx - mx, ry - my) + 1.5 * max(0.0, rt - mz)
+                    if sc < bs:
+                        best, bs = (rx, ry, rt), sc
+                self.roof = best
+            r = self.roof
+            if r is not None:
+                rd = math.hypot(r[0] - mx, r[1] - my)
+                self.on_roof = abs(mz - r[2]) < 1.5 and rd < 14
+                loot_here = reason in ("cube", "weapon", "drop") and goal is not None
+                if self.on_roof:
+                    if not (loot_here and hdist(goal, me["pos"]) < 10):
+                        goal, reason = ((r[0], r[1]) if rd > 3 else None), "roof"
+                elif not (loot_here and t < P["roof_after"]):
+                    goal, reason = (r[0], r[1]), "roof"
+                    if rd < 22 and mz < r[2] - 1.0:
+                        need = (r[2] - mz) * 1.7 + 8
+                        if me["grounded"] and energy < need and not self.climbing:
+                            goal, reason = None, "charge"  # wait at the wall for energy
+                        else:
+                            climb_now = True
+                if not me["grounded"] and self.climbing and mz < r[2] + 2 and rd < 30:
+                    climb_now = True
+        self.climbing = climb_now
 
         # flow field always tracks the zone target (cheap, incremental)
         W.set_flow_goal(zp["nx"], zp["ny"])
@@ -945,9 +1018,18 @@ class Bot:
                 speed_frac = 1.0
                 if energy > 50 and self.rng.random() < 0.06:
                     self.evade_jump = True
+        if self.on_roof:
+            mvx, mvy = dodge_x, dodge_y
+            if goal is not None:
+                gx_, gy_ = norm(goal[0] - mx, goal[1] - my)
+                mvx, mvy = mvx + gx_ * 0.5, mvy + gy_ * 0.5
+        if self.climbing and self.roof is not None:
+            mvx, mvy = norm(self.roof[0] - mx, self.roof[1] - my)
+            speed_frac = 1.0
+            boost = True
         # local wall avoidance
         hx, hy = norm(mvx, mvy)
-        if hx or hy:
+        if (hx or hy) and not self.climbing:
             if not W.walk_clear(mx, my, mz, hx, hy, 7.0):
                 base_a = math.atan2(hy, hx)
                 for k in (1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6):
@@ -962,7 +1044,7 @@ class Bot:
         self.hist.append((t, mx, my))
         while self.hist and t - self.hist[0][0] > 1.6:
             self.hist.popleft()
-        if moving_cmd and t > self.stuck_until and len(self.hist) > 10:
+        if moving_cmd and t > self.stuck_until and len(self.hist) > 10 and not self.climbing:
             t0, x0, y0 = self.hist[0]
             if t - t0 > 1.4 and math.hypot(mx - x0, my - y0) < 1.5:
                 self.stuck_until = t + 1.3
@@ -972,7 +1054,10 @@ class Bot:
                     for it in obs.get("cubes", []) + obs.get("pickups", []):
                         if goal and hdist(it["pos"], goal) < 1:
                             self.blocked_items[it["id"]] = t
-        if t < self.stuck_until:
+        if self.climbing:
+            jump = me["grounded"]
+            self.stuck_until = -1.0
+        elif t < self.stuck_until:
             if self.stuck_count % 2 == 0:
                 a = math.atan2(hy, hx) + (1.2 if self.stuck_count % 4 == 0 else -1.2)
                 hx, hy = math.cos(a), math.sin(a)
@@ -995,7 +1080,7 @@ class Bot:
             jump = True
         act["move"] = [hx * speed_frac, hy * speed_frac]
         # in the air with boost = jet; only jet when we mean to
-        if not me["grounded"] and not (t < self.stuck_until or zp["outside"]):
+        if not me["grounded"] and not (t < self.stuck_until or zp["outside"] or self.climbing):
             boost = False
         act["boost"] = bool(boost and (hx or hy or not me["grounded"]))
         act["jump"] = bool(jump)

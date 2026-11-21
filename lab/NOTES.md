@@ -105,3 +105,24 @@ second weapon, first 75 s), `laser_precharge`.
 **Conclusion.** Only smart aiming is consistently positive, and only by about +0.5. That is too
 small for 48 real matches to detect (+-0.65). Random strafing, pre-charging and arming first
 hurt or do nothing.
+
+## Rounds 8 + 9: rooftop design (t400 as control, calibrated pool)
+Real result first: t400 (t300 + smart aim) scored 3.81, so the t200/t300/t400 family sits at
+about 3.8-3.9 whatever we tune.
+
+New t3core option `roof_mode`: pick a flat roof inside the next circle, jet-climb onto it, and
+hold still near its middle. Re-pick when the zone moves. In smoke tests the roof bots spent
+74-91% of their alive time on roofs, so the mechanics work.
+
+| variant | r8 | r9 |
+|---|---|---|
+| loot 60 s, then climb | -0.18 | -0.46 |
+| roofs 5-25 m | -0.90 | -0.53 |
+| only shoot back from the roof | -0.65 | -0.72 |
+| roofs 8-40 m | -1.36 | -1.12 |
+| roofs 12-45 m | -1.25 | -1.21 |
+
+**Conclusion.** Clearly worse, and worse the more time spent on roofs and the higher the roof.
+Roof bots died earlier (median survival 50-75 s vs about 90 s for t400), looted less, and took
+a few zone deaths when leaving a roof late. Hiding, in any form, keeps losing; this is the third
+time (t201, careful-survivor variants, roofs).

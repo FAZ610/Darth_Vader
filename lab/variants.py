@@ -145,6 +145,26 @@ VARIANTS.update({
 })
 
 
+# ---- round 8: rooftop design on top of t400 (t300 + smart aim)
+T400 = dict(T300, smart_aim=True)
+
+
+def _t4(extra, why):
+    p = dict(T400)
+    p.update(extra)
+    return p, why
+
+
+VARIANTS.update({
+    "t400": _t4({}, "t400 itself"),
+    "r_roof": _t4({"roof_mode": True}, "rooftop holder, roofs 8-40 m"),
+    "r_roof_low": _t4({"roof_mode": True, "roof_min_h": 5.0, "roof_max_h": 25.0}, "lower roofs 5-25 m (cheaper climbs)"),
+    "r_roof_high": _t4({"roof_mode": True, "roof_min_h": 12.0, "roof_max_h": 45.0}, "higher roofs 12-45 m"),
+    "r_roof_quiet": _t4({"roof_mode": True, "roof_engage": False}, "rooftop, only shoot back at attackers"),
+    "r_roof_loot": _t4({"roof_mode": True, "roof_after": 60.0}, "loot for the first 60 s, then climb"),
+})
+
+
 def write_all(out_dir=None):
     out_dir = out_dir or os.path.join(os.path.dirname(os.path.abspath(__file__)), "bots")
     os.makedirs(out_dir, exist_ok=True)
