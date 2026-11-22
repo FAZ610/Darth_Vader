@@ -6,4 +6,4 @@ COPY . .
 # Precompute t800's map grids from the kit's copy of the map (about 2 s). At runtime the cache is used
 # only when its hash matches the mounted /arena; otherwise the bot rebuilds the grids itself.
 RUN python3 t8world.py /bot/mechfight-kit/arena /bot/t8cache.pkl && python3 -m compileall -q /bot
-ENTRYPOINT ["python3", "-u", "/bot/t804.py"]
+ENTRYPOINT ["python3", "-u", "/bot/t805.py"]
