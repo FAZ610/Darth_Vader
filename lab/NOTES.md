@@ -170,3 +170,45 @@ aggression). In the sim, the 9 hunting opponents decide the outcome almost regar
 our bot does. So this sim can reproduce the real score level, but it cannot rank designs. It
 has the same blind spot as the real plateau, which suggests the hunting pool is not how the
 real built-ins behave.
+
+# Round 12: real t600 = 4.52; a laser-sniper opponent and six observation-driven options (2026-11-22)
+Real: t600 scored 4.52 vs t400 3.81. Note the gap (+0.71) is about 1 SE of a difference of two
+48-match scores (+-0.92), so it is encouraging but not proven.
+
+**New opponent `laserbot`**, modelled on the recorded killer (mech 10: laser + gun by 5 s, 4/5
+full-charge hits at 95-146 m): weapon rush keeping the gun, engages to 200 m, kites at ~120 m.
+
+| pool (control t400) | t600 | t200 | baseline |
+|---|---|---|---|
+| **real (vs t400 3.81)** | **+0.71** | **+0.11** | **-1.60** |
+| L1 laserbot x12 | -2.83 | -1.31 | -5.61 |
+| L2 laserbot 6 hunting + 6 normal | +0.36 | -1.17 | -2.36 |
+
+L2 gets the t600 and baseline directions right (level too high: t400 6.6 vs 3.8 real).
+
+**New t3core options** (off by default): `laser_hold` (never release a charge off target),
+`laser_engage` (engage to 180 m with a laser), `matchup` (weapon triangle from `mechs[].weapons`:
+push lightning onto non-lightning targets, stay out of enemy lightning range), `charge_cover`
+(break LOS from a laser charging at us), `upg_loadout` (laser/lightning/armor upgrades),
+`calm_hp` (no crate/drone shooting while hurt so regen runs).
+
+| variant vs t600 | r12E (elite pool) | r12L (laserbot L2 pool) |
+|---|---|---|
+| y_all (all six) | +0.12 | +0.21 |
+| y_matchup | +0.03 | -0.16 |
+| y_calm | -0.23 | +0.12 |
+| y_lrange | -0.04 | -0.59 |
+| y_ccover | -0.36 | -0.37 |
+| y_hold | +0.57 | -1.22 |
+| y_upg | -0.59 | -1.04 |
+
+**Conclusion.** Nothing is robustly better than t600 in both pools (SE ~0.5-0.75). The one
+consistent signal is negative: loadout/armor upgrades lose to t600's damage-first upgrades in both
+pools (-0.59, -1.04), so keep "damage". charge_cover and laser_engage lean negative in both.
+
+# Round 13: three large changes for real submission (sim can't rank them)
+- **t700** t600 + combat from the full observation (matchup, laser discipline capped at 0.6 s, laser engage 180, calm_hp)
+- **t701** built-in mirror: laser + gun sniper, engage 200 m, kite 120-155 m, cover only below 35%
+- **t702** lightning brawler: lightning first, push non-lightning mechs within 110 m
+Sanity run (L2 pool, 40 matches, control t600): t700 -0.38, t702 -0.65, t701 -0.78, all +-0.8-1.05,
+no tracebacks, zone deaths 0-2%. No collapse; real scores decide.

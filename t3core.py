@@ -391,6 +391,16 @@ DEFAULTS = dict(
     roof_mode=False, roof_min_h=8.0, roof_max_h=40.0, roof_after=0.0, roof_min_r=30.0, roof_engage=True,
     # weapons race (round 10): remember pickups, rush laser/lightning, drop the gun for them
     weapon_rush=False, rush_range=220.0, drop_gun=True, opening_spin=True,
+    # round 12: use more of the observation (lab/NOTES.md)
+    laser_hold=False,  # never waste a charged laser: keep holding until on target
+    laser_engage=0.0,  # with a laser, engage visible mechs out to this range (0 = off)
+    matchup=False,  # weapon triangle: push lightning onto non-lightning targets, avoid enemy lightning range
+    push_range=85.0,  # with matchup: close in on targets within this range
+    charge_cover=False,  # break line of sight from a mech charging a laser at us
+    upg_loadout=False,  # upgrades for the laser/lightning loadout, then armor/plating
+    laser_hold_max=9.0,  # with laser_hold: give up holding a full charge after this many seconds
+    rush_first="laser",  # weapon rush: which of laser/lightning to go for first
+    calm_hp=0.0,  # below this HP fraction, don't shoot crates/idle drones (dealing damage resets regen)
 )
 PARAMS = {}
 
@@ -436,6 +446,7 @@ class Bot:
         self.on_roof = False
         self.loot_mem = {}  # pickup id -> (kind, pos, last seen t)
         self.spin_yaw = None
+        self.laser_full_t = None  # when our laser charge became full
         if self.P["roof_mode"]:
             self.roofs = self.world.find_roofs(self.P["roof_min_h"], self.P["roof_max_h"])
 
@@ -521,9 +532,19 @@ class Bot:
         hp_frac = me["hp"] / max(me["max_hp"], 1)
         threats = sum(1 for m in obs["mechs"] if m["kind"] == "mech")
         best, best_i = -1e9, 0
+        held = {w["kind"] for w in me["weapons"] if w}
         for i, ch in enumerate(obs["offer"]["choices"]):
             cid = ch["id"]
             s = UPGRADE_BASE.get(cid, 20)
+            if self.P["upg_loadout"]:
+                s = {"laser_charge": 150, "laser_damage": 140, "lightning_efficiency": 130, "armor": 120,
+                     "plating": 118, "lightning_range": 110, "nanites": 90, "gun_damage": 100, "gun_rate": 95,
+                     "sensors": 60, "gyros": 55, "lightning_chain": 50, "servos": 50, "reactor": 45}.get(cid, 20)
+                if cid.startswith("gun_") and ("laser" in held or "lightning" in held):
+                    s -= 70  # the gun is about to be dropped or is a side arm
+                if s > best:
+                    best, best_i = s, i
+                continue
             if cid in ("armor", "plating") and (hp_frac < 0.5 or threats):
                 s += 20
             if cid == "nanites" and hp_frac < 0.6 and not threats:
@@ -663,6 +684,10 @@ class Bot:
                 elif hdist(pos_, me["pos"]) < 35 and W.los(eye_, (pos_[0], pos_[1], pos_[2] + 0.3)):
                     del self.loot_mem[pid]  # we can see the spot and it is not there: taken
         armed = not any(w is None for w in me["weapons"])
+        my_kinds = {w["kind"] for w in me["weapons"] if w}
+        eng_r = P["engage_range"]
+        if P["laser_engage"] and "laser" in my_kinds:
+            eng_r = max(eng_r, P["laser_engage"])
         arm_mode = P["arm_first"] and t < 75 and not armed
 
         def recently(i, s=4.0):
@@ -678,7 +703,7 @@ class Bot:
                 continue
             if arm_mode and not (hostile or d < 25):
                 continue
-            if not (hostile or d < P["engage_range"] or (weak and d < P["weak_engage"])):
+            if not (hostile or d < eng_r or (weak and d < P["weak_engage"])):
                 continue
             s = d - (80 if hostile else 0) - (40 if weak else 0)
             if P["target_mode"] == "weak":
@@ -688,7 +713,8 @@ class Bot:
         if target is None and not mechs:
             for n in npcs:
                 d = hdist(n["pos"], me["pos"])
-                if recently(n["id"], 5.0) or (d < 42 and hp_frac > 0.5) or (P["npc_farm"] and d < 90 and hp_frac > 0.6):
+                calm = hp_frac >= P["calm_hp"]
+                if recently(n["id"], 5.0) or (calm and ((d < 42 and hp_frac > 0.5) or (P["npc_farm"] and d < 90 and hp_frac > 0.6))):
                     if d < tscore:
                         target, tscore = n, d
         tgt_los = False
@@ -709,7 +735,7 @@ class Bot:
 
         # crate as a fallback target (only when calm)
         crate = None
-        if target is None and not mechs and P["crates"]:
+        if target is None and not mechs and P["crates"] and hp_frac >= P["calm_hp"]:
             best = 1e9
             for c in obs.get("crates", []):
                 d = hdist(c["pos"], me["pos"])
@@ -754,7 +780,7 @@ class Bot:
                     d = hdist(pos_, me["pos"])
                     if d > P["rush_range"] or not self.loot_ok(zp, pos_, t):
                         continue
-                    sc = (100.0 if kind_ == "laser" else 70.0) - d
+                    sc = (100.0 if kind_ == P["rush_first"] else 70.0) - d
                     if sc > bs:
                         best, bs = (pid, pos_), sc
                 if best is not None:
@@ -930,9 +956,18 @@ class Bot:
             if recently(m["id"], 3.0) and (shooter is None or hdist(m["pos"], me["pos"]) < hdist(shooter["pos"], me["pos"])):
                 shooter = m
         took_cover = False
+        force_cover = False
+        if P["charge_cover"]:
+            for m in mechs:
+                d = hdist(m["pos"], me["pos"])
+                if not m.get("charging") or d < 50:
+                    continue
+                to_me = math.atan2(my - m["pos"][1], mx - m["pos"][0])
+                if abs(wrap(m["aim"][0] - to_me)) < 0.2 and (not force_cover or d < hdist(shooter["pos"], me["pos"])):
+                    shooter, force_cover = m, True
         if shooter is not None and W.ok and not zp["outside"]:
             sd = hdist(shooter["pos"], me["pos"])
-            if P["cover"] and (hp_frac < P["cover_hp"] or sd > P["cover_range"]):
+            if P["cover"] and (hp_frac < P["cover_hp"] or sd > P["cover_range"] or force_cover):
                 seye = (shooter["pos"][0], shooter["pos"][1], shooter["pos"][2] + 7.5)
                 best, bs = None, 1e9
                 if not W.los(seye, (mx, my, mz + 6.0), step=2.0):
@@ -978,7 +1013,19 @@ class Bot:
             sx, sy = -fy * self.strafe_sign, fx * self.strafe_sign
             if not P["strafe"]:
                 sx = sy = 0.0
-            if P["kite_dist"] > 0 and hp_frac >= P["retreat_hp"]:
+            tw = set(target.get("weapons", []))
+            push = (P["matchup"] and "lightning" in my_kinds and "lightning" not in tw and tgt_d < P["push_range"]
+                    and hp_frac > 0.45 and energy > 35 and tgt_los
+                    and target.get("hp", 1) / max(target.get("max_hp", 1), 1) < hp_frac + 0.25)
+            avoid = P["matchup"] and "lightning" in tw and "lightning" not in my_kinds and tgt_d < 60
+            if push and tgt_d > 30:
+                mvx, mvy = fx + sx * 0.35, fy + sy * 0.35
+            elif push:
+                mvx, mvy = fx * 0.2 + sx * P["strafe_w"], fy * 0.2 + sy * P["strafe_w"]
+            elif avoid:
+                mvx, mvy = -fx + sx * 0.4, -fy + sy * 0.4
+                boost = boost or (energy > 40 and tgt_d < 48)
+            elif P["kite_dist"] > 0 and hp_frac >= P["retreat_hp"]:
                 if tgt_d < P["kite_dist"]:
                     mvx, mvy = mvx * 0.4 - fx, mvy * 0.4 - fy
                 elif tgt_d > P["kite_dist"] + 35:
@@ -1171,6 +1218,25 @@ class Bot:
                     if (tgt_los and tgt_d < st["range"] * 0.95 and abs(wrap(actual[0] - bearing)) < cone * 0.8
                             and energy > st.get("energy", 3) + reserve):
                         fire[i] = True
+                elif kind == "laser" and P["laser_hold"]:
+                    if w.get("cooldown", 0) > 0:
+                        continue
+                    charge = w.get("charge", 0)
+                    full = st.get("charge", 0.75) * 0.97
+                    can = tgt_los and tgt_d <= st["range"]
+                    err = self.aim_err(actual, self.direct_aim(me, self.lead_point(me, target, 0)))
+                    if charge < full:
+                        self.laser_full_t = None
+                    elif self.laser_full_t is None:
+                        self.laser_full_t = t
+                    if urgent:
+                        fire[i] = False  # charging halves our speed: never while the zone is urgent
+                    elif charge < full:
+                        fire[i] = (can and err < 0.6) or charge > 0  # once started, keep charging
+                    elif t - self.laser_full_t > P["laser_hold_max"]:
+                        fire[i] = False  # held too long at half speed: let it go
+                    else:
+                        fire[i] = not (can and err <= tol)  # release only on target
                 elif kind == "laser":
                     if not tgt_los or tgt_d > st["range"] or urgent:
                         continue
@@ -1209,6 +1275,10 @@ class Bot:
                 if self.spin_yaw is None:
                     self.spin_yaw = me["aim"][0]
                 aim = [wrap(self.spin_yaw + t * 3.6), 0.0]
+        if P["laser_hold"] and target is None and "laser" in kinds and mechs and not urgent:
+            i, w = kinds["laser"]
+            if w.get("charge", 0) > 0:
+                fire[i] = True  # a target just slipped out of selection: keep the charge for it
         if P["laser_precharge"] and target is None and "laser" in kinds and not urgent:
             i, w = kinds["laser"]
             rng_ = w["stats"]["range"] * 0.8
@@ -1239,7 +1309,7 @@ class Bot:
                 if pk["kind"] not in ("laser", "lightning") or pk["kind"] in kinds:
                     continue
                 if hdist(pk["pos"], me["pos"]) <= self.pickup_r - 0.3 and abs(pk["pos"][2] - mz) < 3.8:
-                    if best_pk is None or pk["kind"] == "laser":
+                    if best_pk is None or pk["kind"] == P["rush_first"]:
                         best_pk = pk
             if best_pk is not None:
                 if free_slot:

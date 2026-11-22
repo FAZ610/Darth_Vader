@@ -176,6 +176,35 @@ VARIANTS.update({
 })
 
 
+# ---- round 12: a built-in-like opponent modelled on the recorded killer (mech 10): laser + gun by
+# ~5 s, fights at 95-150 m with full-charge lasers plus gun fire, kites to hold that range.
+VARIANTS["laserbot"] = ({"weapon_rush": True, "drop_gun": False, "smart_aim": True, "engage_range": 200.0,
+                         "weak_engage": 220.0, "kite_dist": 120.0, "combat_range": 230.0, "cover_hp": 0.35,
+                         "cover_range": 1e9, "npc_farm": True, "upgrades": "damage", "loot_enemy_r": 0.0,
+                         "drift_frac": 0.6}, "built-in stand-in: laser sniper")
+T600 = dict(T400, weapon_rush=True)
+VARIANTS["t600"] = (dict(T600), "t600 itself")
+
+
+def _t6(extra, why):
+    p = dict(T600)
+    p.update(extra)
+    return p, why
+
+
+# ---- round 12: use more of the observation, on top of t600 (real 4.52)
+VARIANTS.update({
+    "y_hold": _t6({"laser_hold": True}, "never waste a charged laser"),
+    "y_lrange": _t6({"laser_engage": 180.0}, "with a laser, engage out to 180 m"),
+    "y_matchup": _t6({"matchup": True}, "weapon triangle stance (push lightning, avoid enemy lightning)"),
+    "y_ccover": _t6({"charge_cover": True}, "break LOS from a laser charging at us"),
+    "y_upg": _t6({"upg_loadout": True}, "loadout-aware upgrades"),
+    "y_calm": _t6({"calm_hp": 0.85}, "no crate/drone shooting below 85% HP (keep regen)"),
+    "y_all": _t6({"laser_hold": True, "laser_engage": 180.0, "matchup": True, "charge_cover": True,
+                  "upg_loadout": True, "calm_hp": 0.85}, "all six"),
+})
+
+
 def write_all(out_dir=None):
     out_dir = out_dir or os.path.join(os.path.dirname(os.path.abspath(__file__)), "bots")
     os.makedirs(out_dir, exist_ok=True)
