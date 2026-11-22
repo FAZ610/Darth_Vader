@@ -1,0 +1,12 @@
+.git
+.github
+lab
+t800
+__pycache__
+*.pyc
+mechfight-kit.tar.gz
+mechfight-kit/check
+mechfight-kit/python
+mechfight-kit/ts
+mechfight-kit/*.md
+mechfight-kit/*.json

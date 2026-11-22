@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+t800/
+t800cache.pkl
+t8cache.pkl
+lab/
+mechfight-kit.tar.gz
