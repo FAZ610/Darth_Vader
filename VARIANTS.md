@@ -33,6 +33,12 @@ and finish behavior:
 | `t808.py` | Combining cube snowballing with laser finishing may compound gains | `t801` profile plus tighter target stick and finisher settings |
 | `t809.py` | A slightly lower farming threshold keeps cube hunting more often while healthy | FarmHP 0.25 instead of 0.35 |
 
+## Combined submission
+
+| Variant | Hypothesis | Main changes |
+|---|---|---|
+| `t900.py` | Combine the strongest observed behaviors without changing `t8core` internals | `t801` cube/drop/farming economy, `t804` target stick/finisher, FFA survival bubble, and cover/loser-rule safety |
+
 The official scorer is deterministic for a bot identity, but `seed + salt` gives each variant a
 different action draw. Run at least one independent block of 48 matches per variant rather than
 comparing a single submission score. Keep only the entrypoint and profile that win by a consistent
