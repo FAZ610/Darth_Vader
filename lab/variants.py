@@ -165,6 +165,17 @@ VARIANTS.update({
 })
 
 
+# ---- round 10: weapons race (real recording: the killer had a laser within seconds; half our
+# deaths happen holding only the gun)
+VARIANTS.update({
+    "q_rush": _t4({"weapon_rush": True}, "t400 + weapons race (laser+lightning, drop gun)"),
+    "q_rush_keepgun": _t4({"weapon_rush": True, "drop_gun": False}, "weapons race, keep the gun"),
+    "q_rush_nospin": _t4({"weapon_rush": True, "opening_spin": False}, "weapons race without the opening spin"),
+    "q_rush_near": _t4({"weapon_rush": True, "rush_range": 120.0}, "weapons race within 120 m only"),
+    "q_rush_t200": ({"weapon_rush": True}, "t200 + weapons race"),
+})
+
+
 def write_all(out_dir=None):
     out_dir = out_dir or os.path.join(os.path.dirname(os.path.abspath(__file__)), "bots")
     os.makedirs(out_dir, exist_ok=True)

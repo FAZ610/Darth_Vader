@@ -389,6 +389,8 @@ DEFAULTS = dict(
     smart_aim=False, evasive=0.0, arm_first=False, laser_precharge=False,
     # rooftop design (round 8)
     roof_mode=False, roof_min_h=8.0, roof_max_h=40.0, roof_after=0.0, roof_min_r=30.0, roof_engage=True,
+    # weapons race (round 10): remember pickups, rush laser/lightning, drop the gun for them
+    weapon_rush=False, rush_range=220.0, drop_gun=True, opening_spin=True,
 )
 PARAMS = {}
 
@@ -432,6 +434,8 @@ class Bot:
         self.roof = None  # chosen roof spot
         self.climbing = False
         self.on_roof = False
+        self.loot_mem = {}  # pickup id -> (kind, pos, last seen t)
+        self.spin_yaw = None
         if self.P["roof_mode"]:
             self.roofs = self.world.find_roofs(self.P["roof_min_h"], self.P["roof_max_h"])
 
@@ -638,6 +642,26 @@ class Bot:
                 else:
                     self.acc[m["id"]] = (0.0, 0.0)
                 self.vel_hist[m["id"]] = (t, list(v))
+        if P["weapon_rush"]:
+            seen_now = set()
+            for pk in obs.get("pickups", []):
+                self.loot_mem[pk["id"]] = (pk["kind"], pk["pos"], t)
+                seen_now.add(pk["id"])
+            for ev in obs.get("events", []):
+                if ev.get("type") in ("take_failed", "took") and ev.get("reason", "gone") == "gone":
+                    self.loot_mem.pop(ev.get("id"), None)
+                if ev.get("type") == "dropped":
+                    self.loot_mem.pop(ev.get("id"), None)  # our own drop: never go back for it
+                    self.blocked_items[ev.get("id")] = t + 1e6
+            eye_ = (mx, my, mz + me["stats"]["eye_height"])
+            for pid in list(self.loot_mem):
+                kind_, pos_, ts_ = self.loot_mem[pid]
+                if pid in seen_now:
+                    continue
+                if t - ts_ > 150:
+                    del self.loot_mem[pid]
+                elif hdist(pos_, me["pos"]) < 35 and W.los(eye_, (pos_[0], pos_[1], pos_[2] + 0.3)):
+                    del self.loot_mem[pid]  # we can see the spot and it is not there: taken
         armed = not any(w is None for w in me["weapons"])
         arm_mode = P["arm_first"] and t < 75 and not armed
 
@@ -716,6 +740,26 @@ class Bot:
             gx, gy = zp["nx"] - bx * zp["safe_r"] * 0.7, zp["ny"] - by * zp["safe_r"] * 0.7
             if math.hypot(gx - mx, gy - my) > 8:
                 goal, reason = (gx, gy), "heal"
+        if P["weapon_rush"] and not urgent and goal is None:
+            held_k = {w["kind"] for w in me["weapons"] if w}
+            want = [k for k in ("laser", "lightning") if k not in held_k]
+            if want and (any(w is None for w in me["weapons"]) or "gun" in held_k or "mortar" in held_k):
+                best, bs = None, -1e18
+                for pid, (kind_, pos_, ts_) in self.loot_mem.items():
+                    if kind_ not in want or abs(pos_[2] - mz) > 4:
+                        continue
+                    gave_up = self.blocked_items.get(pid)
+                    if gave_up is not None and t - gave_up < 8:
+                        continue
+                    d = hdist(pos_, me["pos"])
+                    if d > P["rush_range"] or not self.loot_ok(zp, pos_, t):
+                        continue
+                    sc = (100.0 if kind_ == "laser" else 70.0) - d
+                    if sc > bs:
+                        best, bs = (pid, pos_), sc
+                if best is not None:
+                    goal, reason = (best[1][0], best[1][1]), "weapon"
+                    self.rush_target = best[0]
         if not urgent and goal is None:
             # supply drop: full HP + cubes
             for dr in obs.get("drops", []):
@@ -1161,6 +1205,10 @@ class Bot:
                     fire[i] = abs(wrap(me["aim"][0] - aim[0])) < 0.2
         if aim is None:
             aim = self.scan_aim(t, me, mechs, zp, hx, hy)
+            if P["weapon_rush"] and P["opening_spin"] and t < 2.4 and not mechs:
+                if self.spin_yaw is None:
+                    self.spin_yaw = me["aim"][0]
+                aim = [wrap(self.spin_yaw + t * 3.6), 0.0]
         if P["laser_precharge"] and target is None and "laser" in kinds and not urgent:
             i, w = kinds["laser"]
             rng_ = w["stats"]["range"] * 0.8
@@ -1185,6 +1233,26 @@ class Bot:
             if hdist(pk["pos"], me["pos"]) <= self.pickup_r - 0.3 and abs(pk["pos"][2] - mz) < 3.8:
                 if best_pk is None or self.wpref.get(pk["kind"], 0) > self.wpref.get(best_pk["kind"], 0):
                     best_pk = pk
+        if P["weapon_rush"]:
+            best_pk = None
+            for pk in obs.get("pickups", []):
+                if pk["kind"] not in ("laser", "lightning") or pk["kind"] in kinds:
+                    continue
+                if hdist(pk["pos"], me["pos"]) <= self.pickup_r - 0.3 and abs(pk["pos"][2] - mz) < 3.8:
+                    if best_pk is None or pk["kind"] == "laser":
+                        best_pk = pk
+            if best_pk is not None:
+                if free_slot:
+                    act["take"] = best_pk["id"]
+                else:
+                    # replace a mortar first, then the gun
+                    for kind in ("mortar", "gun"):
+                        if kind in kinds and (kind != "gun" or P["drop_gun"]):
+                            act["take"] = best_pk["id"]
+                            act["drop"] = kinds[kind][0]
+                            break
+                self.loot_mem.pop(best_pk["id"], None)
+            best_pk = None
         if best_pk is not None:
             if free_slot:
                 act["take"] = best_pk["id"]

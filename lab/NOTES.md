@@ -126,3 +126,47 @@ hold still near its middle. Re-pick when the zone moves. In smoke tests the roof
 Roof bots died earlier (median survival 50-75 s vs about 90 s for t400), looted less, and took
 a few zone deaths when leaving a roof late. Hiding, in any form, keeps losing; this is the third
 time (t201, careful-survivor variants, roofs).
+
+# The plateau and the weapons race (2026-11-22)
+Real: t500 (aggressive elite style) scored 3.73. Four very different bots now sit at 3.73-3.92,
+while the leaders reach 7+. A plateau that ignores strategy points to something all t3core bots
+share.
+
+Checked and ruled out:
+- **Speed:** t500 on 0.2 / 0.1 of a CPU still answered 99% / 98% of observations in time.
+- **Hidden crashes:** 6 full-length local matches with stderr logs produced no tracebacks.
+
+Evidence from the kit's recording (the only real-match data we have, t = 0-37 s):
+- 3 of 16 mechs were dead by 27 s; the recorded mech died at 37 s.
+- Its killer (mech 10) had a **laser + gun**: 4 full-charge laser hits (1,260 damage) plus
+  405 gun damage, from 55-153 m. The recorded mech dealt only 472 back.
+- The recorded mech never took a weapon, although lasers and lightning were in view for 200+
+  observations.
+
+The same weakness shows in our bots: in the calibrated sim, t400 dies holding only the gun 44-50%
+of the time, and has a laser just 17-22% of the time. The cause is the shared loot logic: weapons
+come after drops and cubes, only within 80 m, and the bot forgets pickups that leave its view.
+
+New t3core option `weapon_rush`:
+- remembers every pickup it has seen
+- spins 360 degrees at the start to spot loot
+- goes for laser, then lightning, before cubes
+- drops the gun or a mortar to hold laser + lightning
+
+Smoke test: 9 of 16 games ended with laser + lightning (t400: gun only in 8 of 16).
+
+## Rounds 10 + 11: weapons race vs t400 (calibrated pool)
+| variant | r10 | r11 |
+|---|---|---|
+| keep the gun | +0.65 | -0.61 |
+| no opening spin | +0.11 | -0.71 |
+| t200 + rush | +0.21 | -0.86 |
+| full rush (laser + lightning, drop gun) | +0.03 | -0.88 |
+| rush within 120 m only | +0.18 | -1.04 |
+
+**Conclusion.** No gain in the sim. More importantly, after 11 rounds nothing has moved the
+calibrated sim by more than noise, even physically large changes (loadout, rooftops,
+aggression). In the sim, the 9 hunting opponents decide the outcome almost regardless of what
+our bot does. So this sim can reproduce the real score level, but it cannot rank designs. It
+has the same blind spot as the real plateau, which suggests the hunting pool is not how the
+real built-ins behave.
