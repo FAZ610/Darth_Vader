@@ -10,9 +10,9 @@ t8core.main(t8core.Profile(
     },
     squad={
         "DropRun": 260,
-        "FightLoot": 100,
+        "FightLoot": 45,
         "FarmHP": 0.35,
-        "CrateUntil": 180,
+        "CrateUntil": 150,
         "Stick": 260,
         "LowBonus": 260,
         "Finish": 32,
@@ -22,6 +22,7 @@ t8core.main(t8core.Profile(
         "LoseRule": True,
         "RetreatHP": 0.38,
         "RecoverHP": 0.80,
+        "LaserUp": True,
     },
     ffa={
         "Bubble": 200,
@@ -31,6 +32,7 @@ t8core.main(t8core.Profile(
         "HomeExpo": 150,
         "LootRadius": 100,
         "DropRun": 220,
+        "LaserUp": True,
     },
     ghost={
         "EndHide": 60,
@@ -38,6 +40,7 @@ t8core.main(t8core.Profile(
         "LoseRule": False,
         "FightLoot": 0,
         "Peek": False,
+        "LaserUp": True,
     },
     salt=900,
 ))

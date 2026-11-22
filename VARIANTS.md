@@ -39,6 +39,17 @@ and finish behavior:
 |---|---|---|
 | `t900.py` | Combine the strongest observed behaviors without changing `t8core` internals | `t801` cube/drop/farming economy, `t804` target stick/finisher, FFA survival bubble, and cover/loser-rule safety |
 
+## t900 controlled follow-ups
+
+| Variant | Change from `t900` | Rationale |
+|---|---|---|
+| `t910.py` | Fight cube range 30 m and crate farming through 150 s | Closest to the public 20–45 m cube-grab gains |
+| `t911.py` | Fight cube range 45 m, retain 150 s crate farming | Tests whether a moderate cube detour beats 30 m |
+
+The public experimental logs showed that large/economic detours and roof-fortress behavior can
+cancel gains. `t900` therefore uses nearby cube grabs, held-weapon upgrades, cover, and FFA
+disengagement rather than stacking all of them into a high-risk roaming strategy.
+
 The official scorer is deterministic for a bot identity, but `seed + salt` gives each variant a
 different action draw. Run at least one independent block of 48 matches per variant rather than
 comparing a single submission score. Keep only the entrypoint and profile that win by a consistent
