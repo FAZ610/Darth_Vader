@@ -3,4 +3,4 @@
 FROM python:3.13-slim
 WORKDIR /bot
 COPY . .
-ENTRYPOINT ["python3", "-u", "/bot/t701.py"]
+ENTRYPOINT ["python3", "-u", "/bot/t702.py"]
