@@ -396,6 +396,7 @@ DEFAULTS = dict(
     laser_engage=0.0,  # with a laser, engage visible mechs out to this range (0 = off)
     matchup=False,  # weapon triangle: push lightning onto non-lightning targets, avoid enemy lightning range
     push_range=85.0,  # with matchup: close in on targets within this range
+    fight_pick=False,  # only start fights we should win (weapon triangle + HP); attackers always count
     charge_cover=False,  # break line of sight from a mech charging a laser at us
     upg_loadout=False,  # upgrades for the laser/lightning loadout, then armor/plating
     laser_hold_max=9.0,  # with laser_hold: give up holding a full charge after this many seconds
@@ -706,6 +707,24 @@ class Bot:
             if not (hostile or d < eng_r or (weak and d < P["weak_engage"])):
                 continue
             s = d - (80 if hostile else 0) - (40 if weak else 0)
+            if P["fight_pick"] and m["kind"] == "mech":
+                tw = set(m.get("weapons", []))
+                their = m.get("hp", 1) / max(m.get("max_hp", 1), 1)
+                good = 0
+                if "laser" in my_kinds and "mortar" in tw:
+                    good += 1  # cook-off: +60% laser damage
+                if "lightning" in my_kinds and "laser" in tw and d < 85:
+                    good += 1  # lightning shorts their laser
+                bad = 0
+                if "lightning" in tw and "lightning" not in my_kinds and d < 70:
+                    bad += 1  # they melt us up close
+                if "laser" in tw and "laser" not in my_kinds and d > 50:
+                    bad += 1  # they outrange us
+                if their > hp_frac + 0.25:
+                    bad += 1  # much healthier than us
+                if not hostile and bad > good:
+                    continue  # don't start this fight
+                s -= 30 * (good - bad)
             if P["target_mode"] == "weak":
                 s = 120 * m.get("hp", 1e9) / max(m.get("max_hp", 1), 1) + 0.3 * d - (40 if hostile else 0)
             if s < tscore:

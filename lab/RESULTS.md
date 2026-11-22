@@ -386,3 +386,14 @@ control=t600, pool=laserbot:6@hunt=1 laserbot:6, 40 matches, 255 s
 | t702 | 40 | 6.60 | -0.65 | 1.01 | 100 | 0.53 | 2 |
 | t701 | 40 | 6.47 | -0.78 | 0.83 | 97 | 0.55 | 0 |
 | pool:laserbot | 480 | 7.74 |  |  | 158 | 0.83 | 17 |
+
+## r14sanity  (2026-11-22 11:28)
+control=t700, pool=laserbot:6@hunt=1 laserbot:6, 40 matches, 203 s
+
+| bot | n | points | vs control | +-SE | surv s | kills | zone deaths % |
+|---|---|---|---|---|---|---|---|
+| CONTROL | 40 | 5.45 |  |  | 83 | 0.42 | 0 |
+| t710 | 40 | 7.60 | +2.15 | 0.78 | 123 | 0.78 | 0 |
+| t712 | 40 | 6.33 | +0.88 | 0.83 | 93 | 0.68 | 0 |
+| t711 | 40 | 5.08 | -0.38 | 0.87 | 85 | 0.57 | 0 |
+| pool:laserbot | 480 | 7.97 |  |  | 177 | 0.80 | 21 |

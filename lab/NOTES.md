@@ -212,3 +212,12 @@ pools (-0.59, -1.04), so keep "damage". charge_cover and laser_engage lean negat
 - **t702** lightning brawler: lightning first, push non-lightning mechs within 110 m
 Sanity run (L2 pool, 40 matches, control t600): t700 -0.38, t702 -0.65, t701 -0.78, all +-0.8-1.05,
 no tracebacks, zone deaths 0-2%. No collapse; real scores decide.
+
+# Round 14: follow-ups to t700 (real: t700 better than t600; t701 and t702 worse)
+New t3core option `fight_pick`: start fights only with good matchups (weapon triangle + HP); attackers
+are always fought back.
+- **t710** t700 without laser_engage 180 (fights start within 90 m, as in t600)
+- **t711** t700 + fight_pick
+- **t712** t710 + fight_pick
+Sanity run (L2 pool, 40 matches, control t700): t710 +2.15 +-0.78, t712 +0.88 +-0.83, t711 -0.38 +-0.87.
+t710 agrees with the real t701 result (long-range fights hurt), but it is one round: confirm for real.
